@@ -144,7 +144,7 @@ impl Connection for MysqlConnection {
 
     /// Establishes a new connection to the MySQL database
     /// `database_url` may be enhanced by GET parameters
-    /// `mysql://[user[:password]@]host[:port]/database_name[?unix_socket=socket-path&ssl_mode=SSL_MODE*&ssl_ca=/etc/ssl/certs/ca-certificates.crt&ssl_cert=/etc/ssl/certs/client-cert.crt&ssl_key=/etc/ssl/certs/client-key.crt]`
+    /// `mysql://[user[:password]@]host[:port]/database_name[?unix_socket=socket-path&ssl_mode=SSL_MODE*&ssl_ca=/etc/ssl/certs/ca-certificates.crt&ssl_cert=/etc/ssl/certs/client-cert.crt&ssl_key=/etc/ssl/certs/client-key.crt&local_infile=true]`
     ///
     /// * `host` can be an IP address or a hostname. If it is set to `localhost`, a connection
     ///   will be attempted through the socket at `/tmp/mysql.sock`. If you want to connect to
@@ -154,6 +154,7 @@ impl Connection for MysqlConnection {
     /// * `ssl_cert` accepts a path to the client's certificate file
     /// * `ssl_key` accepts a path to the client's private key file
     /// * `ssl_mode` expects a value defined for MySQL client command option `--ssl-mode`
+    /// * `local_infile` expects a boolean to enable or disable LOAD DATA LOCAL
     ///   See <https://dev.mysql.com/doc/refman/5.7/en/connection-options.html#option_general_ssl-mode>
     fn establish(database_url: &str) -> ConnectionResult<Self> {
         let mut instrumentation = DynInstrumentation::default_instrumentation();
