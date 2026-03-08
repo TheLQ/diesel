@@ -132,7 +132,7 @@ impl SimpleConnection for MysqlConnection {
                 query: &StrQueryHelper::new(query),
                 error: r.as_ref().err(),
             });
-        r
+        r.map(|_| ())
     }
 }
 
@@ -355,6 +355,10 @@ impl MysqlConnection {
         conn.set_config_options()
             .map_err(CouldntSetupConfiguration)?;
         Ok(conn)
+    }
+
+    pub fn single_execute(&mut self, query: &str) -> QueryResult<u64> {
+        self.raw_connection.execute(query)
     }
 
     pub fn show_warnings(&mut self) -> QueryResult<Vec<String>> {

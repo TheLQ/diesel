@@ -109,12 +109,14 @@ impl RawConnection {
             .into_owned()
     }
 
-    pub(super) fn execute(&self, query: &str) -> QueryResult<()> {
+    pub(super) fn execute(&self, query: &str) -> QueryResult<u64> {
+        let affected;
         unsafe {
             self.execute_query(query)?;
+            affected = ffi::mysql_affected_rows(self.0.as_ptr());
         }
         self.flush_pending_results()?;
-        Ok(())
+        Ok(affected)
     }
 
     fn execute_query(&self, query: &str) -> QueryResult<()> {
