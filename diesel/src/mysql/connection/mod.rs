@@ -356,6 +356,10 @@ impl MysqlConnection {
             .map_err(CouldntSetupConfiguration)?;
         Ok(conn)
     }
+
+    pub fn show_warnings(&mut self) -> QueryResult<Vec<String>> {
+        self.raw_connection.raw_warnings()
+    }
 }
 
 #[cfg(test)]

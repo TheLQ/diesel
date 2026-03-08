@@ -3,6 +3,7 @@ use core::ffi as libc;
 use core::ffi::CStr;
 use core::ptr::{self, NonNull};
 use mysqlclient_sys as ffi;
+use std::mem::transmute;
 use std::sync::Once;
 
 use super::statement_cache::PrepareForCache;
@@ -110,6 +111,14 @@ impl RawConnection {
 
     pub(super) fn execute(&self, query: &str) -> QueryResult<()> {
         unsafe {
+            self.execute_query(query)?;
+        }
+        self.flush_pending_results()?;
+        Ok(())
+    }
+
+    fn execute_query(&self, query: &str) -> QueryResult<()> {
+        unsafe {
             // Make sure you don't use the fake one!
             ffi::mysql_real_query(
                 self.0.as_ptr(),
@@ -118,7 +127,6 @@ impl RawConnection {
             );
         }
         self.did_an_error_occur()?;
-        self.flush_pending_results()?;
         Ok(())
     }
 
@@ -261,6 +269,67 @@ impl RawConnection {
                 n.as_ptr() as *const core::ffi::c_void,
             )
         };
+    }
+
+    pub(super) fn raw_warnings(&self) -> QueryResult<Vec<String>> {
+        self.execute_query("SHOW WARNINGS")?;
+
+        let mut warnings = Vec::new();
+        unsafe {
+            let res = ffi::mysql_store_result(self.0.as_ptr());
+            if res.is_null() {
+                self.did_an_error_occur()?;
+                return Ok(warnings);
+            }
+
+            let num_fields = ffi::mysql_num_fields(res);
+            const MESSAGE_FIELD: usize = 2;
+
+            // (temporary?) sanity: assume Level, Code, Message
+            assert_eq!(num_fields, 3);
+            let last_field = NonNull::new(ffi::mysql_fetch_field_direct(res, MESSAGE_FIELD as u32))
+                .expect("No metadata");
+            let name = CStr::from_ptr(last_field.as_ref().name);
+            assert_eq!(name, CStr::from_bytes_with_nul(b"Message\0").unwrap()); // don't think is localized
+
+            loop {
+                let row = match NonNull::new(ffi::mysql_fetch_row(res)) {
+                    Some(row_ptr) => {
+                        NonNull::slice_from_raw_parts(row_ptr, num_fields as usize).as_ref()
+                    }
+                    None => break,
+                };
+                let lengths = match NonNull::new(ffi::mysql_fetch_lengths(res)) {
+                    Some(lengths_ptr) => {
+                        NonNull::slice_from_raw_parts(lengths_ptr, num_fields as usize).as_ref()
+                    }
+                    None => {
+                        // Docs say an error occured
+                        self.did_an_error_occur()?;
+                        unreachable!("Failed to get field lengths");
+                    }
+                };
+                let message = match NonNull::new(row[MESSAGE_FIELD]) {
+                    Some(message_ptr) => {
+                        // let message_ptr: NonNull<u8> = message_ptr.cast();
+                        let message_slice = NonNull::slice_from_raw_parts(
+                            message_ptr,
+                            lengths[MESSAGE_FIELD] as usize,
+                        )
+                        .as_ref();
+                        str::from_utf8(transmute(message_slice))
+                            // anything is more useful than Err
+                            .unwrap_or("(non utf8 message)")
+                    }
+                    None => "(no message)",
+                };
+                warnings.push(message.to_owned());
+            }
+
+            ffi::mysql_free_result(res);
+        }
+        self.did_an_error_occur()?;
+        Ok(warnings)
     }
 }
 
